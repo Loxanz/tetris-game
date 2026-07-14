@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
   <div class="app">
@@ -18,7 +18,6 @@
 
     <!-- Main Menu -->
     <section id="menu-screen" class="screen menu-screen">
-      <div class="menu-panel">
       <p class="menu-subtitle">Choose your game mode</p>
       <div class="nickname-box">
         <label class="stat-label" for="nickname-input">Nickname</label>
@@ -33,7 +32,9 @@
         <input id="room-code-input" class="room-input" type="text" maxlength="4" placeholder="CODE" autocomplete="off" />
         <button id="btn-join-room" class="menu-btn menu-btn-small">Join Room</button>
       </div>
-      <p class="menu-hint">Local: 2 players on one keyboard · Online: share a room code</p>
+      <div class="menu-hints">
+        <span>Local: 2 players on one keyboard</span>
+        <span>Online: share a room code</span>
       </div>
     </section>
 
@@ -222,6 +223,6 @@
     </section>
   </div>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script src="game.js?v=3"></script>
+  <script src="game.js?v=4"></script>
 </body>
 </html>
