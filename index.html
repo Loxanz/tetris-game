@@ -18,6 +18,10 @@
     <!-- Main Menu -->
     <section id="menu-screen" class="screen menu-screen">
       <p class="menu-subtitle">Choose your game mode</p>
+      <div class="nickname-box">
+        <label class="stat-label" for="nickname-input">Nickname</label>
+        <input id="nickname-input" class="nickname-input" type="text" maxlength="16" placeholder="Your name" autocomplete="nickname" />
+      </div>
       <div class="menu-buttons">
         <button id="btn-solo" class="menu-btn">Solo</button>
         <button id="btn-local" class="menu-btn menu-btn-accent">Local VS</button>
@@ -145,6 +149,17 @@
           <span class="stat-label">Room Code</span>
           <span id="room-code-display" class="room-code">----</span>
         </div>
+        <div class="lobby-players">
+          <div class="lobby-player-card you-card">
+            <span class="stat-label">You</span>
+            <span id="lobby-you-name" class="lobby-player-name">Player</span>
+          </div>
+          <span class="lobby-vs">VS</span>
+          <div class="lobby-player-card opp-card">
+            <span class="stat-label">Opponent</span>
+            <span id="lobby-opp-name" class="lobby-player-name waiting">Waiting…</span>
+          </div>
+        </div>
         <p id="lobby-error" class="lobby-error"></p>
         <button id="btn-start-match" class="menu-btn menu-btn-accent hidden">Start Match</button>
         <button id="btn-back-menu" class="back-btn" data-back>← Back to Menu</button>
@@ -155,7 +170,7 @@
         <p class="vs-label">ONLINE BATTLE — Clear lines to send garbage!</p>
         <div class="versus-layout">
           <div class="player-column player-p1">
-            <h2 class="player-title p1-color">You</h2>
+            <h2 class="player-title p1-color"><span id="online-you-name">You</span></h2>
             <div class="mp-stats">
               <span>Score <strong id="online-score">0</strong></span>
               <span>Lines <strong id="online-lines">0</strong></span>
@@ -188,6 +203,12 @@
               <canvas id="opp-hold" width="80" height="80"></canvas>
               <div class="board-wrap board-wrap-sm board-wrap-opp">
                 <canvas id="opp-board" width="240" height="480"></canvas>
+                <div id="opp-overlay" class="overlay hidden">
+                  <div class="overlay-content">
+                    <p id="opp-overlay-title" class="overlay-title">—</p>
+                    <p id="opp-overlay-msg" class="overlay-msg"></p>
+                  </div>
+                </div>
               </div>
               <canvas id="opp-next" width="80" height="240"></canvas>
             </div>

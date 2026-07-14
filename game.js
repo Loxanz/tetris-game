@@ -534,12 +534,14 @@
       this.onGameOver(won);
     }
 
-    showOverlay(title, msg, isGameOver = false) {
+    showOverlay(title, msg, isGameOver = false, resultClass = "") {
       if (!this.dom.overlay || !this.dom.overlayTitle || !this.dom.overlayMsg) return;
       this.dom.overlayTitle.textContent = title;
       this.dom.overlayMsg.textContent = msg;
       this.dom.overlayMsg.style.whiteSpace = "pre-line";
       this.dom.overlayTitle.classList.toggle("game-over", isGameOver);
+      this.dom.overlayTitle.classList.toggle("victory", resultClass === "victory");
+      this.dom.overlayTitle.classList.toggle("defeat", resultClass === "defeat");
       this.dom.overlay.classList.remove("hidden");
     }
 
@@ -808,6 +810,13 @@
   const roomCodeInput = document.getElementById("room-code-input");
   const lobbyError = document.getElementById("lobby-error");
   const btnStartMatch = document.getElementById("btn-start-match");
+  const nicknameInput = document.getElementById("nickname-input");
+  const lobbyYouName = document.getElementById("lobby-you-name");
+  const lobbyOppName = document.getElementById("lobby-opp-name");
+  const onlineYouName = document.getElementById("online-you-name");
+  const onlineOpponentNameEl = document.getElementById("online-opponent-name");
+
+  const NICKNAME_KEY = "tetris-nickname";
 
   const KEY_P1 = {
     left: "ArrowLeft", right: "ArrowRight", down: "ArrowDown",
@@ -847,9 +856,104 @@
   let onlinePlayer = null;
   let opponentView = null;
   let onlineOpponentName = "Opponent";
+  let myNickname = "Player";
+  let opponentNickname = "";
   let onlineSyncAccum = 0;
   let pendingOpponentState = null;
   const ONLINE_SYNC_MS = 50;
+
+  function sanitizeNickname(name) {
+    const trimmed = String(name || "").trim().slice(0, 16);
+    return trimmed || "Player";
+  }
+
+  function getNickname() {
+    return sanitizeNickname(nicknameInput?.value || localStorage.getItem(NICKNAME_KEY) || "Player");
+  }
+
+  function saveNickname() {
+    myNickname = getNickname();
+    if (nicknameInput) nicknameInput.value = myNickname;
+    localStorage.setItem(NICKNAME_KEY, myNickname);
+    return myNickname;
+  }
+
+  function updateLobbyNames() {
+    if (lobbyYouName) lobbyYouName.textContent = myNickname;
+    if (lobbyOppName) {
+      lobbyOppName.textContent = opponentNickname || "Waiting…";
+      lobbyOppName.classList.toggle("waiting", !opponentNickname);
+    }
+  }
+
+  function updateOnlineNames() {
+    if (onlineYouName) onlineYouName.textContent = myNickname;
+    if (onlineOpponentNameEl) onlineOpponentNameEl.textContent = opponentNickname || "Opponent";
+    onlineOpponentName = opponentNickname || "Opponent";
+  }
+
+  function updateLobbyStatus() {
+    if (!lobbyStatus) return;
+    if (!opponentNickname) {
+      if (isHost) lobbyStatus.textContent = "Waiting for opponent… Share the room code.";
+      else lobbyStatus.textContent = "Connecting to room…";
+      return;
+    }
+    if (isHost) {
+      lobbyStatus.textContent = `${myNickname} vs ${opponentNickname} — Press Start Match.`;
+    } else {
+      lobbyStatus.textContent = `${myNickname} vs ${opponentNickname} — Waiting for host…`;
+    }
+  }
+
+  function showOpponentOverlay(title, msg, resultClass = "") {
+    const overlay = document.getElementById("opp-overlay");
+    const titleEl = document.getElementById("opp-overlay-title");
+    const msgEl = document.getElementById("opp-overlay-msg");
+    if (!overlay || !titleEl || !msgEl) return;
+    titleEl.textContent = title;
+    msgEl.textContent = msg;
+    msgEl.style.whiteSpace = "pre-line";
+    titleEl.className = "overlay-title";
+    if (resultClass) titleEl.classList.add(resultClass);
+    overlay.classList.remove("hidden");
+  }
+
+  function hideOpponentOverlay() {
+    document.getElementById("opp-overlay")?.classList.add("hidden");
+  }
+
+  function finishOnlineMatch(won) {
+    if (matchOver) return;
+    matchOver = true;
+    if (onlinePlayer) {
+      onlinePlayer.running = false;
+      onlinePlayer.gameOver = true;
+      onlinePlayer.inputEnabled = false;
+      onlinePlayer.cancelLock();
+    }
+    const myScore = onlinePlayer?.score ?? 0;
+    const oppScore = opponentView?.score ?? 0;
+    const scoreLine = `${myScore} - ${oppScore}`;
+
+    if (won) {
+      onlinePlayer?.showOverlay(
+        "VICTORY",
+        `You beat ${opponentNickname}!\n${scoreLine}\nPress Enter for menu`,
+        true,
+        "victory"
+      );
+      showOpponentOverlay("DEFEAT", `${myNickname} wins!\n${scoreLine}`, "defeat");
+    } else {
+      onlinePlayer?.showOverlay(
+        "DEFEAT",
+        `${opponentNickname} wins!\n${scoreLine}\nPress Enter for menu`,
+        true,
+        "defeat"
+      );
+      showOpponentOverlay("VICTORY", `${opponentNickname} wins!\n${scoreLine}`, "victory");
+    }
+  }
 
   function showScreen(screen) {
     [menuScreen, soloScreen, localScreen, onlineScreen].forEach((el) => {
@@ -890,6 +994,9 @@
     roomCodeDisplay.textContent = "----";
     roomCodeInput.value = "";
     btnStartMatch.classList.add("hidden");
+    opponentNickname = "";
+    updateLobbyNames();
+    hideOpponentOverlay();
   }
 
   function createPlayer(id, name, keyMap, domPrefix, competitive, callbacks, extra = {}) {
@@ -1019,14 +1126,18 @@
       }
     }, 12000);
 
-    conn.on("open", () => {
+    const onConnected = () => {
       clearTimeout(connectTimeout);
+      sendOnline({ type: "hello", name: myNickname });
       if (!isHost) {
         roomCodeDisplay.textContent = roomCode;
-        lobbyStatus.textContent = "Joined! Waiting for host to start…";
+        updateLobbyStatus();
         btnStartMatch.classList.add("hidden");
       }
-    });
+    };
+
+    conn.on("open", onConnected);
+    if (conn.open) onConnected();
     conn.on("data", (raw) => {
       try {
         onOnlineMessage(parsePeerData(raw));
@@ -1042,9 +1153,14 @@
 
   function onPeerClose() {
     if (mode.startsWith("online") && !matchOver) {
-      lobbyError.textContent = "Opponent disconnected";
+      lobbyError.textContent = `${opponentNickname || "Opponent"} disconnected`;
       if (onlinePlayer) {
-        onlinePlayer.showOverlay("OPPONENT LEFT", "Press Enter for menu", true);
+        onlinePlayer.showOverlay(
+          "OPPONENT LEFT",
+          `${opponentNickname || "Opponent"} left the match.\nPress Enter for menu`,
+          true,
+          "defeat"
+        );
         onlinePlayer.running = false;
       }
     }
@@ -1052,12 +1168,22 @@
 
   function onOnlineMessage(msg) {
     switch (msg.type) {
+      case "hello":
+        opponentNickname = sanitizeNickname(msg.name);
+        updateLobbyNames();
+        updateOnlineNames();
+        updateLobbyStatus();
+        if (isHost) btnStartMatch.classList.remove("hidden");
+        break;
       case "opponent_joined":
-        lobbyStatus.textContent = "Opponent connected! Host: press Start Match.";
+        updateLobbyStatus();
         if (isHost) btnStartMatch.classList.remove("hidden");
         break;
       case "match_start":
-        startOnlineMatch(msg.you || "You", msg.opponent || "Opponent");
+        if (msg.hostName) opponentNickname = sanitizeNickname(msg.hostName);
+        else if (msg.opponent) opponentNickname = sanitizeNickname(msg.opponent);
+        updateOnlineNames();
+        startOnlineMatch(myNickname, opponentNickname);
         break;
       case "state":
         applyOpponentState(msg.state);
@@ -1066,12 +1192,7 @@
         if (onlinePlayer && !matchOver) onlinePlayer.receiveGarbage(msg.lines);
         break;
       case "game_over":
-      case "opponent_lost":
-        if (onlinePlayer && !matchOver) {
-          matchOver = true;
-          onlinePlayer.endGame(true);
-          onlinePlayer.showOverlay("VICTORY", "You win!\nPress Enter for menu", true);
-        }
+        if (onlinePlayer && !matchOver) finishOnlineMatch(true);
         break;
       case "error":
         lobbyError.textContent = msg.message;
@@ -1094,7 +1215,7 @@
     peer.on("connection", (conn) => {
       if (dataConn) dataConn.close();
       setupDataConn(conn);
-      lobbyStatus.textContent = "Opponent connected! Host: press Start Match.";
+      updateLobbyStatus();
       btnStartMatch.classList.remove("hidden");
     });
 
@@ -1129,12 +1250,16 @@
 
   function startOnlineLobby(asHost) {
     stopAll();
+    saveNickname();
+    opponentNickname = "";
     mode = "online-lobby";
     showScreen(onlineScreen);
     lobbyPanel.classList.remove("hidden");
     onlineGamePanel.classList.add("hidden");
     lobbyError.textContent = "";
     isHost = asHost;
+    updateLobbyNames();
+    updateLobbyStatus();
 
     if (typeof Peer === "undefined") {
       lobbyError.textContent = "Multiplayer failed to load. Refresh the page.";
@@ -1155,26 +1280,28 @@
 
   function startOnlineMatch(you, opponent) {
     if (mode === "online" && onlinePlayer?.running) return;
+    myNickname = sanitizeNickname(you) || myNickname;
+    opponentNickname = sanitizeNickname(opponent) || opponentNickname || "Opponent";
     mode = "online";
     matchOver = false;
     onlineSyncAccum = 0;
     lobbyPanel.classList.add("hidden");
     onlineGamePanel.classList.remove("hidden");
-    onlineOpponentName = opponent;
+    hideOpponentOverlay();
+    updateOnlineNames();
 
-    onlinePlayer = createPlayer("online", you, KEY_P1, "online", true, {
+    onlinePlayer = createPlayer("online", myNickname, KEY_P1, "online", true, {
       onAttack: (lines) => sendOnline({ type: "attack", lines }),
       onStateSync: () => broadcastOnlineState(),
       onGameOver: () => {
         if (!matchOver) {
-          matchOver = true;
-          sendOnline({ type: "game_over" });
-          onlinePlayer.showOverlay("DEFEAT", `${opponent} wins!\nPress Enter for menu`, true);
+          sendOnline({ type: "game_over", winner: opponentNickname, loser: myNickname });
+          finishOnlineMatch(false);
         }
       },
     });
 
-    opponentView = createPlayer("opp", opponent, {}, "opp", false, {}, { spectator: true });
+    opponentView = createPlayer("opp", opponentNickname, {}, "opp", false, {}, { spectator: true });
     opponentView.startSpectating();
 
     if (pendingOpponentState) {
@@ -1185,7 +1312,6 @@
     players = [onlinePlayer, opponentView];
     onlinePlayer.start();
     broadcastOnlineState();
-    document.getElementById("online-opponent-name").textContent = opponent;
     lastTime = performance.now();
     if (!animId) animId = requestAnimationFrame(loop);
   }
@@ -1267,15 +1393,19 @@
 
   window.addEventListener("blur", () => players.forEach((p) => p.clearInput()));
 
-  document.getElementById("btn-solo").addEventListener("click", startSolo);
-  document.getElementById("btn-local").addEventListener("click", startLocal);
+  document.getElementById("btn-solo").addEventListener("click", () => { saveNickname(); startSolo(); });
+  document.getElementById("btn-local").addEventListener("click", () => { saveNickname(); startLocal(); });
   document.getElementById("btn-create-room").addEventListener("click", () => startOnlineLobby(true));
   document.getElementById("btn-join-room").addEventListener("click", () => startOnlineLobby(false));
   document.getElementById("btn-start-match").addEventListener("click", () => {
     if (!isHost || !dataConn) return;
     const begin = () => {
-      sendOnline({ type: "match_start", you: "You", opponent: "Opponent" });
-      startOnlineMatch("You", "Opponent");
+      sendOnline({
+        type: "match_start",
+        hostName: myNickname,
+        guestName: opponentNickname,
+      });
+      startOnlineMatch(myNickname, opponentNickname);
     };
     if (dataConn.open) begin();
     else dataConn.once("open", begin);
@@ -1285,6 +1415,11 @@
   });
 
   goMenu();
+  myNickname = saveNickname();
+  if (nicknameInput) {
+    nicknameInput.addEventListener("change", saveNickname);
+    nicknameInput.addEventListener("blur", saveNickname);
+  }
   lastTime = performance.now();
   animId = requestAnimationFrame(loop);
 })();
