@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tetris</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="logo">TETRIS</h1>
+    </header>
+
+    <!-- Main Menu -->
+    <section id="menu-screen" class="screen menu-screen">
+      <p class="menu-subtitle">Choose your game mode</p>
+      <div class="menu-buttons">
+        <button id="btn-solo" class="menu-btn">Solo</button>
+        <button id="btn-local" class="menu-btn menu-btn-accent">Local VS</button>
+        <button id="btn-create-room" class="menu-btn">Create Online Room</button>
+      </div>
+      <div class="join-row">
+        <input id="room-code-input" class="room-input" type="text" maxlength="4" placeholder="CODE" autocomplete="off" />
+        <button id="btn-join-room" class="menu-btn menu-btn-small">Join Room</button>
+      </div>
+      <p class="menu-hint">Local: 2 players on one keyboard · Online: share a room code</p>
+    </section>
+
+    <!-- Solo Mode -->
+    <section id="solo-screen" class="screen hidden">
+      <main class="game-layout">
+        <aside class="panel panel-left">
+          <div class="stat-box">
+            <span class="stat-label">Hold</span>
+            <canvas id="solo-hold" width="120" height="120"></canvas>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Score</span>
+            <span id="solo-score" class="stat-value">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Level</span>
+            <span id="solo-level" class="stat-value">1</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Lines</span>
+            <span id="solo-lines" class="stat-value">0</span>
+          </div>
+        </aside>
+        <section class="board-wrap">
+          <canvas id="solo-board" width="300" height="600"></canvas>
+          <div id="solo-overlay" class="overlay">
+            <div class="overlay-content">
+              <p id="solo-overlay-title" class="overlay-title">TETRIS</p>
+              <p id="solo-overlay-msg" class="overlay-msg">Press Enter to start</p>
+            </div>
+          </div>
+        </section>
+        <aside class="panel panel-right">
+          <div class="stat-box">
+            <span class="stat-label">Next</span>
+            <canvas id="solo-next" width="120" height="360"></canvas>
+          </div>
+          <div class="controls">
+            <span class="stat-label">Controls</span>
+            <ul>
+              <li><kbd>←</kbd><kbd>→</kbd> Move</li>
+              <li><kbd>↑</kbd> / <kbd>X</kbd> Rotate</li>
+              <li><kbd>Z</kbd> Rotate CCW</li>
+              <li><kbd>↓</kbd> Soft drop</li>
+              <li><kbd>Space</kbd> Hard drop</li>
+              <li><kbd>C</kbd> Hold · <kbd>V</kbd> Skip</li>
+              <li><kbd>P</kbd> Pause · <kbd>Esc</kbd> Menu</li>
+            </ul>
+          </div>
+        </aside>
+      </main>
+      <button class="back-btn" data-back>← Back to Menu</button>
+    </section>
+
+    <!-- Local Multiplayer -->
+    <section id="local-screen" class="screen hidden">
+      <p class="vs-label">LOCAL BATTLE — Clear lines to send garbage!</p>
+      <div class="versus-layout">
+        <div class="player-column player-p1">
+          <h2 class="player-title p1-color">Player 1</h2>
+          <div class="mp-stats">
+            <span>Score <strong id="p1-score">0</strong></span>
+            <span>Lines <strong id="p1-lines">0</strong></span>
+          </div>
+          <div class="mp-board-row">
+            <canvas id="p1-hold" width="80" height="80"></canvas>
+            <div class="board-wrap board-wrap-sm">
+              <canvas id="p1-board" width="240" height="480"></canvas>
+              <div id="p1-overlay" class="overlay">
+                <div class="overlay-content">
+                  <p id="p1-overlay-title" class="overlay-title">PLAYER 1</p>
+                  <p id="p1-overlay-msg" class="overlay-msg">Press Enter</p>
+                </div>
+              </div>
+            </div>
+            <canvas id="p1-next" width="80" height="240"></canvas>
+          </div>
+          <p class="player-controls">← → ↓ ↑ Z Space C V</p>
+        </div>
+
+        <div class="vs-divider">VS</div>
+
+        <div class="player-column player-p2">
+          <h2 class="player-title p2-color">Player 2</h2>
+          <div class="mp-stats">
+            <span>Score <strong id="p2-score">0</strong></span>
+            <span>Lines <strong id="p2-lines">0</strong></span>
+          </div>
+          <div class="mp-board-row">
+            <canvas id="p2-hold" width="80" height="80"></canvas>
+            <div class="board-wrap board-wrap-sm">
+              <canvas id="p2-board" width="240" height="480"></canvas>
+              <div id="p2-overlay" class="overlay">
+                <div class="overlay-content">
+                  <p id="p2-overlay-title" class="overlay-title">PLAYER 2</p>
+                  <p id="p2-overlay-msg" class="overlay-msg">Press Enter</p>
+                </div>
+              </div>
+            </div>
+            <canvas id="p2-next" width="80" height="240"></canvas>
+          </div>
+          <p class="player-controls">A D S W Q E F R</p>
+        </div>
+      </div>
+      <p class="mp-hint">2 lines = 1 garbage · 3 lines = 2 · Tetris = 4 · <kbd>Enter</kbd> start/rematch · <kbd>Esc</kbd> menu</p>
+      <button class="back-btn" data-back>← Back to Menu</button>
+    </section>
+
+    <!-- Online Multiplayer -->
+    <section id="online-screen" class="screen hidden">
+      <div id="lobby-panel" class="lobby-panel">
+        <h2 class="lobby-title">Online Battle</h2>
+        <p id="lobby-status" class="lobby-status">Create or join a room to compete</p>
+        <div class="room-code-box">
+          <span class="stat-label">Room Code</span>
+          <span id="room-code-display" class="room-code">----</span>
+        </div>
+        <p id="lobby-error" class="lobby-error"></p>
+        <button id="btn-start-match" class="menu-btn menu-btn-accent hidden">Start Match</button>
+        <button id="btn-back-menu" class="back-btn" data-back>← Back to Menu</button>
+        <p class="menu-hint">Run <code>npm start</code> first, then share the room code with a friend on the same network.</p>
+      </div>
+
+      <div id="online-game-panel" class="hidden">
+        <p class="vs-label">ONLINE BATTLE vs <span id="online-opponent-name">Opponent</span></p>
+        <main class="game-layout">
+          <aside class="panel panel-left">
+            <div class="stat-box">
+              <span class="stat-label">Hold</span>
+              <canvas id="online-hold" width="120" height="120"></canvas>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Score</span>
+              <span id="online-score" class="stat-value">0</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Level</span>
+              <span id="online-level" class="stat-value">1</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Lines</span>
+              <span id="online-lines" class="stat-value">0</span>
+            </div>
+          </aside>
+          <section class="board-wrap">
+            <canvas id="online-board" width="300" height="600"></canvas>
+            <div id="online-overlay" class="overlay">
+              <div class="overlay-content">
+                <p id="online-overlay-title" class="overlay-title">TETRIS</p>
+                <p id="online-overlay-msg" class="overlay-msg">Get ready!</p>
+              </div>
+            </div>
+          </section>
+          <aside class="panel panel-right">
+            <div class="stat-box">
+              <span class="stat-label">Next</span>
+              <canvas id="online-next" width="120" height="360"></canvas>
+            </div>
+            <div class="controls">
+              <span class="stat-label">Controls</span>
+              <ul>
+                <li><kbd>←</kbd><kbd>→</kbd> Move</li>
+                <li><kbd>↑</kbd> Rotate</li>
+                <li><kbd>Z</kbd> Rotate CCW</li>
+                <li><kbd>↓</kbd> Soft drop</li>
+                <li><kbd>Space</kbd> Hard drop</li>
+                <li><kbd>C</kbd> Hold · <kbd>V</kbd> Skip</li>
+                <li><kbd>Esc</kbd> Menu</li>
+              </ul>
+            </div>
+          </aside>
+        </main>
+      </div>
+    </section>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
