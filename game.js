@@ -878,6 +878,11 @@
     });
   }
 
+  function isStaticHost() {
+    const h = location.hostname;
+    return h.endsWith(".vercel.app") || h.endsWith(".github.io");
+  }
+
   function wsUrl() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const host = location.hostname || "localhost";
@@ -905,6 +910,12 @@
     onlineGamePanel.classList.add("hidden");
     lobbyError.textContent = "";
     isHost = asHost;
+
+    if (isStaticHost()) {
+      lobbyError.textContent =
+        "Online mode needs the local server. Run npm start on your PC, then open http://localhost:8080. Solo & Local VS work on this site.";
+      return;
+    }
 
     connectWs()
       .then((socket) => {

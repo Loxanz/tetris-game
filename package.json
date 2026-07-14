@@ -2,11 +2,11 @@
   "name": "tetris-game",
   "version": "1.0.0",
   "description": "Tetris with solo, local, and online multiplayer",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
-  "dependencies": {
+  "devDependencies": {
     "ws": "^8.18.0"
   }
 }
