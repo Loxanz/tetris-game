@@ -766,7 +766,8 @@
   let matchOver = false;
   let lastTime = 0;
   let animId = 0;
-  let ws = null;
+  let peer = null;
+  let dataConn = null;
   let roomCode = "";
   let isHost = false;
   let onlinePlayer = null;
@@ -787,9 +788,13 @@
     });
     players = [];
     matchOver = false;
-    if (ws) {
-      ws.close();
-      ws = null;
+    if (dataConn) {
+      dataConn.close();
+      dataConn = null;
+    }
+    if (peer) {
+      peer.destroy();
+      peer = null;
     }
   }
 
@@ -878,28 +883,132 @@
     });
   }
 
-  function isStaticHost() {
-    const h = location.hostname;
-    return h.endsWith(".vercel.app") || h.endsWith(".github.io");
+  function makeRoomCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
   }
 
-  function wsUrl() {
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const host = location.hostname || "localhost";
-    return `${proto}//${host}:8080`;
+  function peerIdFromCode(code) {
+    return `tetris-${code.toUpperCase()}`;
   }
 
-  function connectWs() {
-    return new Promise((resolve, reject) => {
-      const socket = new WebSocket(wsUrl());
-      socket.addEventListener("open", () => resolve(socket));
-      socket.addEventListener("error", () => reject(new Error("Could not connect to server")));
-      setTimeout(() => reject(new Error("Connection timed out")), 5000);
+  function sendOnline(msg) {
+    if (dataConn && dataConn.open) dataConn.send(JSON.stringify(msg));
+  }
+
+  function setupDataConn(conn) {
+    dataConn = conn;
+    const connectTimeout = setTimeout(() => {
+      if (!conn.open) {
+        lobbyError.textContent = "Could not connect. Check the room code and try again.";
+        conn.close();
+      }
+    }, 12000);
+
+    conn.on("open", () => {
+      clearTimeout(connectTimeout);
+      if (!isHost) {
+        roomCodeDisplay.textContent = roomCode;
+        lobbyStatus.textContent = "Joined! Waiting for host to start…";
+        btnStartMatch.classList.add("hidden");
+      }
+    });
+    conn.on("data", (raw) => {
+      try {
+        onOnlineMessage(JSON.parse(raw));
+      } catch {
+        /* ignore malformed packets */
+      }
+    });
+    conn.on("close", onPeerClose);
+    conn.on("error", () => {
+      lobbyError.textContent = "Connection lost. Check the room code and try again.";
     });
   }
 
-  function sendWs(msg) {
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  function onPeerClose() {
+    if (mode.startsWith("online") && !matchOver) {
+      lobbyError.textContent = "Opponent disconnected";
+      if (onlinePlayer) {
+        onlinePlayer.showOverlay("OPPONENT LEFT", "Press Enter for menu", true);
+        onlinePlayer.running = false;
+      }
+    }
+  }
+
+  function onOnlineMessage(msg) {
+    switch (msg.type) {
+      case "opponent_joined":
+        lobbyStatus.textContent = "Opponent connected! Host: press Start Match.";
+        if (isHost) btnStartMatch.classList.remove("hidden");
+        break;
+      case "match_start":
+        startOnlineMatch(msg.you || "You", msg.opponent || "Opponent");
+        break;
+      case "attack":
+        if (onlinePlayer && !matchOver) onlinePlayer.receiveGarbage(msg.lines);
+        break;
+      case "game_over":
+      case "opponent_lost":
+        if (onlinePlayer && !matchOver) {
+          matchOver = true;
+          onlinePlayer.endGame(true);
+          onlinePlayer.showOverlay("VICTORY", "You win!\nPress Enter for menu", true);
+        }
+        break;
+      case "error":
+        lobbyError.textContent = msg.message;
+        break;
+    }
+  }
+
+  function hostRoom(retry = 0) {
+    roomCode = makeRoomCode();
+    roomCodeDisplay.textContent = roomCode;
+    lobbyStatus.textContent = "Creating room…";
+
+    peer = new Peer(peerIdFromCode(roomCode), { debug: 0 });
+
+    peer.on("open", () => {
+      lobbyStatus.textContent = "Waiting for opponent… Share the room code.";
+      btnStartMatch.classList.add("hidden");
+    });
+
+    peer.on("connection", (conn) => {
+      setupDataConn(conn);
+      lobbyStatus.textContent = "Opponent connected! Host: press Start Match.";
+      btnStartMatch.classList.remove("hidden");
+    });
+
+    peer.on("error", (err) => {
+      if (err.type === "unavailable-id" && retry < 5) {
+        peer.destroy();
+        peer = null;
+        hostRoom(retry + 1);
+        return;
+      }
+      lobbyError.textContent = "Could not create room. Please try again.";
+    });
+  }
+
+  function joinRoom(code) {
+    roomCode = code;
+    roomCodeDisplay.textContent = code;
+    lobbyStatus.textContent = "Connecting to room…";
+    btnStartMatch.classList.add("hidden");
+
+    peer = new Peer({ debug: 0 });
+
+    peer.on("open", () => {
+      const conn = peer.connect(peerIdFromCode(code), { reliable: true });
+      setupDataConn(conn);
+    });
+
+    peer.on("error", () => {
+      lobbyError.textContent = "Could not connect. Check the room code and try again.";
+    });
   }
 
   function startOnlineLobby(asHost) {
@@ -911,84 +1020,20 @@
     lobbyError.textContent = "";
     isHost = asHost;
 
-    if (isStaticHost()) {
-      lobbyError.textContent =
-        "Online mode needs the local server. Run npm start on your PC, then open http://localhost:8080. Solo & Local VS work on this site.";
+    if (typeof Peer === "undefined") {
+      lobbyError.textContent = "Multiplayer failed to load. Refresh the page.";
       return;
     }
 
-    connectWs()
-      .then((socket) => {
-        ws = socket;
-        ws.addEventListener("message", onWsMessage);
-        ws.addEventListener("close", onWsClose);
-        if (asHost) sendWs({ type: "create_room" });
-        else {
-          const code = roomCodeInput.value.trim().toUpperCase();
-          if (code.length !== 4) {
-            lobbyError.textContent = "Enter a 4-letter room code";
-            return;
-          }
-          sendWs({ type: "join_room", code });
-        }
-      })
-      .catch((err) => {
-        lobbyError.textContent = `${err.message}. Run: npm start`;
-      });
-  }
-
-  function onWsClose() {
-    if (mode.startsWith("online") && !matchOver) {
-      lobbyError.textContent = "Disconnected from server";
-      if (onlinePlayer) {
-        onlinePlayer.showOverlay("DISCONNECTED", "Opponent left or server closed", true);
-        onlinePlayer.running = false;
+    if (asHost) {
+      hostRoom();
+    } else {
+      const code = roomCodeInput.value.trim().toUpperCase();
+      if (code.length !== 4) {
+        lobbyError.textContent = "Enter a 4-letter room code";
+        return;
       }
-    }
-  }
-
-  function onWsMessage(event) {
-    const msg = JSON.parse(event.data);
-    switch (msg.type) {
-      case "room_created":
-        roomCode = msg.code;
-        roomCodeDisplay.textContent = msg.code;
-        lobbyStatus.textContent = "Waiting for opponent… Share the room code.";
-        btnStartMatch.classList.remove("hidden");
-        break;
-      case "room_joined":
-        roomCode = msg.code;
-        roomCodeDisplay.textContent = msg.code;
-        lobbyStatus.textContent = "Joined! Waiting for host to start…";
-        btnStartMatch.classList.add("hidden");
-        break;
-      case "opponent_joined":
-        lobbyStatus.textContent = "Opponent connected! Host: press Start Match.";
-        if (isHost) btnStartMatch.classList.remove("hidden");
-        break;
-      case "error":
-        lobbyError.textContent = msg.message;
-        break;
-      case "match_start":
-        startOnlineMatch(msg.you, msg.opponent);
-        break;
-      case "attack":
-        if (onlinePlayer && !matchOver) onlinePlayer.receiveGarbage(msg.lines);
-        break;
-      case "opponent_lost":
-        if (onlinePlayer && !matchOver) {
-          matchOver = true;
-          onlinePlayer.endGame(true);
-          onlinePlayer.showOverlay("VICTORY", "You win!\nPress Enter for menu", true);
-        }
-        break;
-      case "opponent_left":
-        if (onlinePlayer) {
-          onlinePlayer.showOverlay("OPPONENT LEFT", "Press Enter for menu", true);
-          onlinePlayer.running = false;
-        }
-        lobbyStatus.textContent = "Opponent disconnected";
-        break;
+      joinRoom(code);
     }
   }
 
@@ -1000,11 +1045,11 @@
     onlineOpponentName = opponent;
 
     onlinePlayer = createPlayer("online", you, KEY_P1, "online", true, {
-      onAttack: (lines) => sendWs({ type: "attack", lines }),
+      onAttack: (lines) => sendOnline({ type: "attack", lines }),
       onGameOver: () => {
         if (!matchOver) {
           matchOver = true;
-          sendWs({ type: "game_over" });
+          sendOnline({ type: "game_over" });
           onlinePlayer.showOverlay("DEFEAT", `${opponent} wins!\nPress Enter for menu`, true);
         }
       },
@@ -1090,7 +1135,10 @@
   document.getElementById("btn-create-room").addEventListener("click", () => startOnlineLobby(true));
   document.getElementById("btn-join-room").addEventListener("click", () => startOnlineLobby(false));
   document.getElementById("btn-start-match").addEventListener("click", () => {
-    if (ws && isHost) sendWs({ type: "start_match" });
+    if (isHost && dataConn && dataConn.open) {
+      sendOnline({ type: "match_start", you: "You", opponent: "Opponent" });
+      startOnlineMatch("You", "Opponent");
+    }
   });
   document.querySelectorAll("[data-back]").forEach((btn) => {
     btn.addEventListener("click", goMenu);
