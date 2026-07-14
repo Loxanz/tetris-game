@@ -1016,6 +1016,7 @@
 
   function startSolo() {
     stopAll();
+    blurInputs();
     mode = "solo";
     showScreen(soloScreen);
     const player = createPlayer("solo", "Player", KEY_P1, "solo", false, {
@@ -1031,6 +1032,7 @@
 
   function startLocal() {
     stopAll();
+    blurInputs();
     mode = "local";
     showScreen(localScreen);
     matchOver = false;
@@ -1251,6 +1253,7 @@
   function startOnlineLobby(asHost) {
     stopAll();
     saveNickname();
+    blurInputs();
     opponentNickname = "";
     mode = "online-lobby";
     showScreen(onlineScreen);
@@ -1283,6 +1286,7 @@
     myNickname = sanitizeNickname(you) || myNickname;
     opponentNickname = sanitizeNickname(opponent) || opponentNickname || "Opponent";
     mode = "online";
+    blurInputs();
     matchOver = false;
     onlineSyncAccum = 0;
     lobbyPanel.classList.add("hidden");
@@ -1335,12 +1339,29 @@
     });
   }
 
+  function isTyping() {
+    if (mode !== "menu" && mode !== "online-lobby") return false;
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+  }
+
+  function blurInputs() {
+    const el = document.activeElement;
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
+      el.blur();
+    }
+  }
+
   const PREVENT_DEFAULT = new Set([
     "ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp", "Space",
     "KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE",
   ]);
 
   window.addEventListener("keydown", (e) => {
+    if (isTyping()) return;
+
     if (PREVENT_DEFAULT.has(e.code)) e.preventDefault();
 
     if (e.key === "Escape" && mode !== "menu") {
@@ -1366,8 +1387,12 @@
       return;
     }
 
-    if (mode === "solo" && (e.key === "p" || e.key === "P")) {
-      players[0]?.togglePause();
+    if (mode === "solo" && players[0]) {
+      if (e.key === "p" || e.key === "P") {
+        players[0].togglePause();
+        return;
+      }
+      players[0].handleKeyDown(e.code);
       return;
     }
 
@@ -1386,6 +1411,7 @@
   });
 
   window.addEventListener("keyup", (e) => {
+    if (isTyping()) return;
     if (mode === "local") players.forEach((p) => p.handleKeyUp(e.code));
     else if (mode === "online" && onlinePlayer) onlinePlayer.handleKeyUp(e.code);
     else if (mode === "solo" && players[0]) players[0].handleKeyUp(e.code);
