@@ -418,7 +418,12 @@ kbd {
   image-rendering: pixelated;
 }
 
-#p1-hold, #p1-next, #p2-hold, #p2-next {
+.board-wrap-opp {
+  border-color: rgba(110, 181, 255, 0.35);
+}
+
+#p1-hold, #p1-next, #p2-hold, #p2-next,
+#online-hold, #online-next, #opp-hold, #opp-next {
   image-rendering: pixelated;
 }
 

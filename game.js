@@ -178,17 +178,18 @@
       this.keys = options.keys;
       this.dom = options.dom;
       this.competitive = options.competitive || false;
+      this.spectator = options.spectator || false;
       this.onAttack = options.onAttack || (() => {});
       this.onGameOver = options.onGameOver || (() => {});
       this.onReady = options.onReady || (() => {});
 
       this.boardCtx = this.dom.board.getContext("2d");
-      this.holdCtx = this.dom.hold.getContext("2d");
-      this.nextCtx = this.dom.next.getContext("2d");
+      this.holdCtx = this.dom.hold ? this.dom.hold.getContext("2d") : null;
+      this.nextCtx = this.dom.next ? this.dom.next.getContext("2d") : null;
 
       this.resetState();
       this.active = false;
-      this.inputEnabled = true;
+      this.inputEnabled = !this.spectator;
       this.pressed = Object.create(null);
       this.dasDir = 0;
       this.dasTimer = 0;
@@ -523,6 +524,7 @@
     }
 
     showOverlay(title, msg, isGameOver = false) {
+      if (!this.dom.overlay || !this.dom.overlayTitle || !this.dom.overlayMsg) return;
       this.dom.overlayTitle.textContent = title;
       this.dom.overlayMsg.textContent = msg;
       this.dom.overlayMsg.style.whiteSpace = "pre-line";
@@ -531,6 +533,7 @@
     }
 
     hideOverlay() {
+      if (!this.dom.overlay) return;
       this.dom.overlay.classList.add("hidden");
     }
 
@@ -608,6 +611,7 @@
     }
 
     drawHold() {
+      if (!this.holdCtx || !this.dom.hold) return;
       const ctx = this.holdCtx;
       const canvas = this.dom.hold;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -619,6 +623,7 @@
     }
 
     drawNext() {
+      if (!this.nextCtx || !this.dom.next) return;
       const ctx = this.nextCtx;
       const canvas = this.dom.next;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -630,6 +635,7 @@
     }
 
     tick(dt) {
+      if (this.spectator) return;
       if (!this.running || this.paused || this.gameOver || this.clearing) return;
       this.handleDAS(dt);
       if (this.current) {
@@ -694,6 +700,7 @@
       if (this.pressed[code]) return;
       this.pressed[code] = true;
       const k = this.keys;
+      if (!k.left) return;
 
       if (code === k.left) this.setDas(-1);
       else if (code === k.right) this.setDas(1);
@@ -711,6 +718,7 @@
     handleKeyUp(code) {
       this.pressed[code] = false;
       const k = this.keys;
+      if (!k.left) return;
       if (code === k.left && this.dasDir === -1) {
         this.setDas(this.pressed[k.right] ? 1 : 0);
       } else if (code === k.right && this.dasDir === 1) {
@@ -719,6 +727,39 @@
         this.softDropping = false;
         this.dropAccum = 0;
       }
+    }
+
+    exportState() {
+      return {
+        grid: this.grid.map((row) => row.slice()),
+        current: this.current ? { ...this.current } : null,
+        queue: this.queue.slice(0, NEXT_COUNT),
+        hold: this.hold,
+        score: this.score,
+        lines: this.lines,
+      };
+    }
+
+    importState(state) {
+      if (!state) return;
+      this.grid = state.grid.map((row) => row.map((cell) => cell || null));
+      this.current = state.current ? { ...state.current } : null;
+      this.queue = state.queue ? state.queue.slice() : [];
+      this.hold = state.hold || null;
+      this.score = state.score || 0;
+      this.lines = state.lines || 0;
+      this.clearing = false;
+      this.clearAnim = null;
+      this.updateHUD();
+    }
+
+    startSpectating() {
+      this.reset();
+      this.running = true;
+      this.active = true;
+      this.drawBoard();
+      this.drawHold();
+      this.drawNext();
     }
   }
 
@@ -771,7 +812,10 @@
   let roomCode = "";
   let isHost = false;
   let onlinePlayer = null;
+  let opponentView = null;
   let onlineOpponentName = "Opponent";
+  let onlineSyncAccum = 0;
+  const ONLINE_SYNC_MS = 100;
 
   function showScreen(screen) {
     [menuScreen, soloScreen, localScreen, onlineScreen].forEach((el) => {
@@ -788,6 +832,9 @@
     });
     players = [];
     matchOver = false;
+    onlineSyncAccum = 0;
+    opponentView = null;
+    onlinePlayer = null;
     if (dataConn) {
       dataConn.close();
       dataConn = null;
@@ -810,13 +857,14 @@
     btnStartMatch.classList.add("hidden");
   }
 
-  function createPlayer(id, name, keyMap, domPrefix, competitive, callbacks) {
+  function createPlayer(id, name, keyMap, domPrefix, competitive, callbacks, extra = {}) {
     return new TetrisPlayer({
       id,
       name,
       keys: keyMap,
       dom: playerDom(domPrefix),
       competitive,
+      spectator: extra.spectator || false,
       onAttack: callbacks.onAttack,
       onGameOver: callbacks.onGameOver,
       onReady: callbacks.onReady || (() => {}),
@@ -947,6 +995,9 @@
       case "match_start":
         startOnlineMatch(msg.you || "You", msg.opponent || "Opponent");
         break;
+      case "state":
+        if (opponentView) opponentView.importState(msg.state);
+        break;
       case "attack":
         if (onlinePlayer && !matchOver) onlinePlayer.receiveGarbage(msg.lines);
         break;
@@ -1055,8 +1106,12 @@
       },
     });
 
-    players = [onlinePlayer];
+    opponentView = createPlayer("opp", opponent, {}, "opp", false, {}, { spectator: true });
+    opponentView.startSpectating();
+
+    players = [onlinePlayer, opponentView];
     onlinePlayer.start();
+    sendOnline({ type: "state", state: onlinePlayer.exportState() });
     document.getElementById("online-opponent-name").textContent = opponent;
     lastTime = performance.now();
     if (!animId) animId = requestAnimationFrame(loop);
@@ -1066,6 +1121,15 @@
     animId = requestAnimationFrame(loop);
     const dt = Math.min(now - lastTime, 50);
     lastTime = now;
+
+    if (mode === "online" && onlinePlayer?.running && !onlinePlayer.gameOver && !onlinePlayer.paused) {
+      onlineSyncAccum += dt;
+      if (onlineSyncAccum >= ONLINE_SYNC_MS) {
+        onlineSyncAccum = 0;
+        sendOnline({ type: "state", state: onlinePlayer.exportState() });
+      }
+    }
+
     players.forEach((p) => {
       p.tick(dt);
       p.render();

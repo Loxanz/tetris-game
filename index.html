@@ -152,54 +152,48 @@
       </div>
 
       <div id="online-game-panel" class="hidden">
-        <p class="vs-label">ONLINE BATTLE vs <span id="online-opponent-name">Opponent</span></p>
-        <main class="game-layout">
-          <aside class="panel panel-left">
-            <div class="stat-box">
-              <span class="stat-label">Hold</span>
-              <canvas id="online-hold" width="120" height="120"></canvas>
+        <p class="vs-label">ONLINE BATTLE — Clear lines to send garbage!</p>
+        <div class="versus-layout">
+          <div class="player-column player-p1">
+            <h2 class="player-title p1-color">You</h2>
+            <div class="mp-stats">
+              <span>Score <strong id="online-score">0</strong></span>
+              <span>Lines <strong id="online-lines">0</strong></span>
             </div>
-            <div class="stat-box">
-              <span class="stat-label">Score</span>
-              <span id="online-score" class="stat-value">0</span>
-            </div>
-            <div class="stat-box">
-              <span class="stat-label">Level</span>
-              <span id="online-level" class="stat-value">1</span>
-            </div>
-            <div class="stat-box">
-              <span class="stat-label">Lines</span>
-              <span id="online-lines" class="stat-value">0</span>
-            </div>
-          </aside>
-          <section class="board-wrap">
-            <canvas id="online-board" width="300" height="600"></canvas>
-            <div id="online-overlay" class="overlay">
-              <div class="overlay-content">
-                <p id="online-overlay-title" class="overlay-title">TETRIS</p>
-                <p id="online-overlay-msg" class="overlay-msg">Get ready!</p>
+            <div class="mp-board-row">
+              <canvas id="online-hold" width="80" height="80"></canvas>
+              <div class="board-wrap board-wrap-sm">
+                <canvas id="online-board" width="240" height="480"></canvas>
+                <div id="online-overlay" class="overlay">
+                  <div class="overlay-content">
+                    <p id="online-overlay-title" class="overlay-title">YOU</p>
+                    <p id="online-overlay-msg" class="overlay-msg">Get ready!</p>
+                  </div>
+                </div>
               </div>
+              <canvas id="online-next" width="80" height="240"></canvas>
             </div>
-          </section>
-          <aside class="panel panel-right">
-            <div class="stat-box">
-              <span class="stat-label">Next</span>
-              <canvas id="online-next" width="120" height="360"></canvas>
+            <p class="player-controls">← → ↓ ↑ Z Space C V</p>
+          </div>
+
+          <div class="vs-divider">VS</div>
+
+          <div class="player-column player-p2">
+            <h2 class="player-title p2-color"><span id="online-opponent-name">Opponent</span></h2>
+            <div class="mp-stats">
+              <span>Score <strong id="opp-score">0</strong></span>
+              <span>Lines <strong id="opp-lines">0</strong></span>
             </div>
-            <div class="controls">
-              <span class="stat-label">Controls</span>
-              <ul>
-                <li><kbd>←</kbd><kbd>→</kbd> Move</li>
-                <li><kbd>↑</kbd> Rotate</li>
-                <li><kbd>Z</kbd> Rotate CCW</li>
-                <li><kbd>↓</kbd> Soft drop</li>
-                <li><kbd>Space</kbd> Hard drop</li>
-                <li><kbd>C</kbd> Hold · <kbd>V</kbd> Skip</li>
-                <li><kbd>Esc</kbd> Menu</li>
-              </ul>
+            <div class="mp-board-row">
+              <canvas id="opp-hold" width="80" height="80"></canvas>
+              <div class="board-wrap board-wrap-sm board-wrap-opp">
+                <canvas id="opp-board" width="240" height="480"></canvas>
+              </div>
+              <canvas id="opp-next" width="80" height="240"></canvas>
             </div>
-          </aside>
-        </main>
+          </div>
+        </div>
+        <p class="mp-hint">2 lines = 1 garbage · 3 lines = 2 · Tetris = 4 · <kbd>P</kbd> pause · <kbd>Esc</kbd> menu</p>
       </div>
     </section>
   </div>
