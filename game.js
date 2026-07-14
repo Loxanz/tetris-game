@@ -182,6 +182,7 @@
       this.onAttack = options.onAttack || (() => {});
       this.onGameOver = options.onGameOver || (() => {});
       this.onReady = options.onReady || (() => {});
+      this.onStateSync = options.onStateSync || (() => {});
 
       this.boardCtx = this.dom.board.getContext("2d");
       this.holdCtx = this.dom.hold ? this.dom.hold.getContext("2d") : null;
@@ -337,6 +338,7 @@
         this.endGame(false);
         return false;
       }
+      this.notifyStateSync();
       return true;
     }
 
@@ -356,6 +358,7 @@
         this.pendingGarbage += lines;
       } else {
         this.injectGarbage(lines);
+        this.notifyStateSync();
       }
     }
 
@@ -376,6 +379,7 @@
       } else {
         this.spawn();
       }
+      this.notifyStateSync();
     }
 
     findFullRows() {
@@ -409,6 +413,7 @@
         this.clearAnim = null;
         this.clearing = false;
         this.spawn();
+        this.notifyStateSync();
       }, LINE_CLEAR_MS);
     }
 
@@ -417,6 +422,7 @@
       if (this.valid(this.current, this.current.rot, this.current.x + dx, this.current.y)) {
         this.current.x += dx;
         this.tryResetLock();
+        this.notifyStateSync();
         return true;
       }
       return false;
@@ -429,6 +435,7 @@
         this.score += 1;
         this.updateHUD();
         this.ensureLock();
+        this.notifyStateSync();
         return true;
       }
       this.ensureLock();
@@ -442,6 +449,7 @@
       this.current.y = gy;
       this.score += dropped * 2;
       this.updateHUD();
+      this.notifyStateSync();
       this.lockPiece();
     }
 
@@ -459,6 +467,7 @@
           this.current.x = nx;
           this.current.y = ny;
           this.tryResetLock();
+          this.notifyStateSync();
           return;
         }
       }
@@ -485,6 +494,7 @@
       }
       this.canHold = false;
       this.drawHold();
+      this.notifyStateSync();
     }
 
     skipPiece() {
@@ -493,6 +503,7 @@
       this.current = null;
       this.spawn();
       this.canSkip = false;
+      this.notifyStateSync();
     }
 
     reset() {
@@ -729,9 +740,19 @@
       }
     }
 
+    notifyStateSync() {
+      if (!this.spectator) this.onStateSync();
+    }
+
     exportState() {
+      let gridStr = "";
+      for (let y = 0; y < TOTAL_ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          gridStr += this.grid[y][x] || ".";
+        }
+      }
       return {
-        grid: this.grid.map((row) => row.slice()),
+        grid: gridStr,
         current: this.current ? { ...this.current } : null,
         queue: this.queue.slice(0, NEXT_COUNT),
         hold: this.hold,
@@ -742,7 +763,19 @@
 
     importState(state) {
       if (!state) return;
-      this.grid = state.grid.map((row) => row.map((cell) => cell || null));
+      if (typeof state.grid === "string") {
+        this.grid = [];
+        for (let y = 0; y < TOTAL_ROWS; y++) {
+          const row = [];
+          for (let x = 0; x < COLS; x++) {
+            const ch = state.grid[y * COLS + x] || ".";
+            row.push(ch === "." ? null : ch);
+          }
+          this.grid.push(row);
+        }
+      } else if (Array.isArray(state.grid)) {
+        this.grid = state.grid.map((row) => row.map((cell) => cell || null));
+      }
       this.current = state.current ? { ...state.current } : null;
       this.queue = state.queue ? state.queue.slice() : [];
       this.hold = state.hold || null;
@@ -815,7 +848,8 @@
   let opponentView = null;
   let onlineOpponentName = "Opponent";
   let onlineSyncAccum = 0;
-  const ONLINE_SYNC_MS = 100;
+  let pendingOpponentState = null;
+  const ONLINE_SYNC_MS = 50;
 
   function showScreen(screen) {
     [menuScreen, soloScreen, localScreen, onlineScreen].forEach((el) => {
@@ -833,6 +867,7 @@
     players = [];
     matchOver = false;
     onlineSyncAccum = 0;
+    pendingOpponentState = null;
     opponentView = null;
     onlinePlayer = null;
     if (dataConn) {
@@ -868,6 +903,7 @@
       onAttack: callbacks.onAttack,
       onGameOver: callbacks.onGameOver,
       onReady: callbacks.onReady || (() => {}),
+      onStateSync: callbacks.onStateSync || (() => {}),
     });
   }
 
@@ -942,8 +978,36 @@
     return `tetris-${code.toUpperCase()}`;
   }
 
+  function parsePeerData(raw) {
+    if (typeof raw === "string") return JSON.parse(raw);
+    if (raw instanceof ArrayBuffer) return JSON.parse(new TextDecoder().decode(raw));
+    if (typeof raw === "object" && raw !== null) return raw;
+    return JSON.parse(String(raw));
+  }
+
+  function broadcastOnlineState() {
+    if (mode !== "online" || matchOver || !onlinePlayer || onlinePlayer.spectator) return;
+    sendOnline({ type: "state", state: onlinePlayer.exportState() });
+  }
+
+  function applyOpponentState(state) {
+    if (!state) return;
+    if (!opponentView) {
+      pendingOpponentState = state;
+      return;
+    }
+    opponentView.importState(state);
+    opponentView.render();
+  }
+
   function sendOnline(msg) {
-    if (dataConn && dataConn.open) dataConn.send(JSON.stringify(msg));
+    if (!dataConn) return;
+    const payload = JSON.stringify(msg);
+    if (dataConn.open) {
+      dataConn.send(payload);
+    } else {
+      dataConn.once("open", () => dataConn.send(payload));
+    }
   }
 
   function setupDataConn(conn) {
@@ -965,7 +1029,7 @@
     });
     conn.on("data", (raw) => {
       try {
-        onOnlineMessage(JSON.parse(raw));
+        onOnlineMessage(parsePeerData(raw));
       } catch {
         /* ignore malformed packets */
       }
@@ -996,7 +1060,7 @@
         startOnlineMatch(msg.you || "You", msg.opponent || "Opponent");
         break;
       case "state":
-        if (opponentView) opponentView.importState(msg.state);
+        applyOpponentState(msg.state);
         break;
       case "attack":
         if (onlinePlayer && !matchOver) onlinePlayer.receiveGarbage(msg.lines);
@@ -1028,6 +1092,7 @@
     });
 
     peer.on("connection", (conn) => {
+      if (dataConn) dataConn.close();
       setupDataConn(conn);
       lobbyStatus.textContent = "Opponent connected! Host: press Start Match.";
       btnStartMatch.classList.remove("hidden");
@@ -1089,14 +1154,17 @@
   }
 
   function startOnlineMatch(you, opponent) {
+    if (mode === "online" && onlinePlayer?.running) return;
     mode = "online";
     matchOver = false;
+    onlineSyncAccum = 0;
     lobbyPanel.classList.add("hidden");
     onlineGamePanel.classList.remove("hidden");
     onlineOpponentName = opponent;
 
     onlinePlayer = createPlayer("online", you, KEY_P1, "online", true, {
       onAttack: (lines) => sendOnline({ type: "attack", lines }),
+      onStateSync: () => broadcastOnlineState(),
       onGameOver: () => {
         if (!matchOver) {
           matchOver = true;
@@ -1109,9 +1177,14 @@
     opponentView = createPlayer("opp", opponent, {}, "opp", false, {}, { spectator: true });
     opponentView.startSpectating();
 
+    if (pendingOpponentState) {
+      applyOpponentState(pendingOpponentState);
+      pendingOpponentState = null;
+    }
+
     players = [onlinePlayer, opponentView];
     onlinePlayer.start();
-    sendOnline({ type: "state", state: onlinePlayer.exportState() });
+    broadcastOnlineState();
     document.getElementById("online-opponent-name").textContent = opponent;
     lastTime = performance.now();
     if (!animId) animId = requestAnimationFrame(loop);
@@ -1126,7 +1199,7 @@
       onlineSyncAccum += dt;
       if (onlineSyncAccum >= ONLINE_SYNC_MS) {
         onlineSyncAccum = 0;
-        sendOnline({ type: "state", state: onlinePlayer.exportState() });
+        broadcastOnlineState();
       }
     }
 
@@ -1199,10 +1272,13 @@
   document.getElementById("btn-create-room").addEventListener("click", () => startOnlineLobby(true));
   document.getElementById("btn-join-room").addEventListener("click", () => startOnlineLobby(false));
   document.getElementById("btn-start-match").addEventListener("click", () => {
-    if (isHost && dataConn && dataConn.open) {
+    if (!isHost || !dataConn) return;
+    const begin = () => {
       sendOnline({ type: "match_start", you: "You", opponent: "Opponent" });
       startOnlineMatch("You", "Opponent");
-    }
+    };
+    if (dataConn.open) begin();
+    else dataConn.once("open", begin);
   });
   document.querySelectorAll("[data-back]").forEach((btn) => {
     btn.addEventListener("click", goMenu);

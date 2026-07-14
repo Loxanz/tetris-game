@@ -405,6 +405,13 @@ kbd {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  flex-wrap: nowrap;
+  justify-content: center;
+  width: 100%;
+}
+
+#online-hold, #online-next, #opp-hold, #opp-next {
+  flex-shrink: 0;
 }
 
 .board-wrap-sm {
