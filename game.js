@@ -1037,12 +1037,12 @@
     showScreen(localScreen);
     matchOver = false;
 
-    const p1 = createPlayer("p1", "Player 1", KEY_P1, "p1", true, {
+    const p1 = createPlayer("p1", "Player 1", KEY_P2, "p1", true, {
       onAttack: (lines) => { if (!matchOver && p2.running) p2.receiveGarbage(lines); },
       onGameOver: (won) => handleLocalOver(p1, p2, won),
     });
 
-    const p2 = createPlayer("p2", "Player 2", KEY_P2, "p2", true, {
+    const p2 = createPlayer("p2", "Player 2", KEY_P1, "p2", true, {
       onAttack: (lines) => { if (!matchOver && p1.running) p1.receiveGarbage(lines); },
       onGameOver: (won) => handleLocalOver(p2, p1, won),
     });
